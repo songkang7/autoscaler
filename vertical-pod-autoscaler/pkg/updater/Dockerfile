@@ -13,11 +13,28 @@
 # limitations under the License.
 
 
-FROM gcr.io/distroless/static:latest
-MAINTAINER Marcin Wielgus "mwielgus@google.com"
+FROM --platform=$BUILDPLATFORM golang:1.23.4 AS builder
 
-ARG ARCH
-COPY updater-$ARCH /updater
+WORKDIR /workspace
+
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+
+RUN go mod download
+
+COPY common common
+COPY pkg pkg
+
+ARG TARGETOS TARGETARCH
+
+RUN CGO_ENABLED=0 LD_FLAGS=-s GOARCH=$TARGETARCH GOOS=$TARGETOS go build -C pkg/updater -o updater-$TARGETARCH
+
+FROM registry-cn-hangzhou.ack.aliyuncs.com/dev/alpine:3.20-update
+
+ARG TARGETARCH
+
+COPY --from=builder /workspace/pkg/updater/updater-$TARGETARCH /updater
 
 ENTRYPOINT ["/updater"]
 CMD ["--v=4", "--stderrthreshold=info"]
